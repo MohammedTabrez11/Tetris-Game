@@ -100,57 +100,417 @@ int getch() {
     #endif
 }
 
-const int WIDTH = 10, HEIGHT = 20;
-int grid[HEIGHT][WIDTH];
-int score = 0, highScore = 0, level = 1;
-const int LEVEL_UP_SCORE = 500;  // Score needed to level up
-const int BASE_FALL_SPEED = 500; // Initial fall speed in ms
+class Tetris {
+private:
+    static const int WIDTH = 10, HEIGHT = 20;
+    static const int LEVEL_UP_SCORE = 500;
+    static const int BASE_FALL_SPEED = 500;
 
-vector<string> color{
-    "🟦", "🟪", "🟨", "🟥", "🟩", "🟧", "🟫"};
+    int grid[HEIGHT][WIDTH];
+    int score;
+    int highScore;
+    int level;
+    int tetX;
+    int tetY;
+    int currentTetrominoIndex;
+    int nextTetrominoIndex;
+    
+    vector<vector<int>> currentTetromino;
+    vector<vector<int>> nextTetromino;
+    
+    static const vector<string> color;
+    static const vector<vector<vector<int>>> tetrominoes;
 
-void displayRules()
-{
-    system("cls");
-    cout << "╔════════════════════════════════════════════════════════════════════════════════╗\n";
-    cout << "║                              TETRIS GAME RULES                                 ║\n";
-    cout << "╠════════════════════════════════════════════════════════════════════════════════╣\n";
-    cout << "║                                                                                ║\n";
-    cout << "║  CONTROLS:                                                                     ║\n";
-    cout << "║    A/← - Move piece left                                                       ║\n";
-    cout << "║    D/→ - Move piece right                                                      ║\n";
-    cout << "║    S/↓ - Soft drop (move piece down faster)                                    ║\n";
-    cout << "║    W/↑ - Rotate piece clockwise                                                ║\n";
-    cout << "║    Space - Hard drop (instantly drop piece)                                    ║\n";
-    cout << "║    R - Restart game                                                            ║\n";
-    cout << "║    Q - Quit game                                                               ║\n";
-    cout << "║    P - Pause game                                                              ║\n";
-    cout << "║                                                                                ║\n";
-    cout << "║  SCORING:                                                                      ║\n";
-    cout << "║    • 100 points for each line cleared                                          ║\n";
-    cout << "║    • Bonus points for multiple lines:                                          ║\n";
-    cout << "║      - 2 lines: +50 bonus                                                      ║\n";
-    cout << "║      - 3 lines: +100 bonus                                                     ║\n";
-    cout << "║      - 4 lines: +150 bonus                                                     ║\n";
-    cout << "║                                                                                ║\n";
-    cout << "║  LEVELS:                                                                       ║\n";
-    cout << "║    • Start at Level 1                                                          ║\n";
-    cout << "║    • Level up every 500 points                                                 ║\n";
-    cout << "║    • Pieces fall faster each level                                             ║\n";
-    cout << "║                                                                                ║\n";
-    cout << "║  TIPS:                                                                         ║\n";
-    cout << "║    • Keep the playing field flat                                               ║\n";
-    cout << "║    • Create spaces for I pieces                                                ║\n";
-    cout << "║    • Use hard drop for quick placement                                         ║\n";
-    cout << "║    • Plan ahead for rotations                                                  ║\n";
-    cout << "║    • Clear lines from bottom up                                                ║\n";
-    cout << "║                                                                                ║\n";
-    cout << "║  Press any key to start the game...                                            ║\n";
-    cout << "╚════════════════════════════════════════════════════════════════════════════════╝\n";
-    _getch();
-}
+    bool isValidPosition(const vector<vector<int>>& shape, int x, int y) {
+        for (int i = 0; i < 4; i++) {
+            for (int j = 0; j < 4; j++) {
+                if (shape[i][j]) {
+                    int newX = x + j;
+                    int newY = y + i;
+                    if (newX < 0 || newX >= WIDTH || newY >= HEIGHT)
+                        return false;
+                    if (newY >= 0 && grid[newY][newX] >= 0)
+                        return false;
+                }
+            }
+        }
+        return true;
+    }
 
-vector<vector<vector<int>>> tetrominoes = {
+    vector<vector<int>> rotateTetromino(const vector<vector<int>>& shape) {
+        vector<vector<int>> rotated(4, vector<int>(4, 0));
+        for (int i = 0; i < 4; i++) {
+            for (int j = 0; j < 4; j++) {
+                rotated[j][3 - i] = shape[i][j];
+            }
+        }
+        return rotated;
+    }
+
+    void loadHighScore() {
+        ifstream file("highscore.txt");
+        if (file >> highScore)
+            file.close();
+    }
+
+    void saveHighScore() {
+        if (score > highScore) {
+            ofstream file("highscore.txt");
+            file << score;
+            file.close();
+        }
+    }
+
+    int getFallSpeed() {
+        return max(100, BASE_FALL_SPEED - (level * 50));
+    }
+
+    void displayBonusText(int bonus, int x, int y) {
+        gotoxy(x, y);
+        
+        for (int i = 0; i < 3; i++) {
+            gotoxy(x, y);
+            cout << "🎉 BONUS +" << bonus << " 🎉";
+            sleepFor(200);
+            gotoxy(x, y);
+            cout << "   BONUS +" << bonus << "   ";
+            sleepFor(200);
+        }
+
+        gotoxy(x, y);
+        cout << "                    ";
+    }
+
+    void getNextTetromino() {
+        nextTetrominoIndex = rand() % tetrominoes.size();
+        nextTetromino = tetrominoes[nextTetrominoIndex];
+    }
+
+    void displayNextTetromino() {
+        int x = WIDTH * 2 + 5;
+        int y = 2;
+        gotoxy(x, y);
+        
+        cout << "Next Piece:";
+        y++;
+        gotoxy(x, y);
+        
+        for(int i = 0; i < 4; i++) {
+            cout << "  ";
+            for(int j = 0; j < 4; j++) {
+                cout << (nextTetromino[i][j] ? color[nextTetrominoIndex] : "⬜");
+            }
+            cout << "\n";
+            y++;
+            gotoxy(x, y);
+        }
+    }
+
+    void displayGrid() {
+        gotoxy(0, 0);
+        cout << "\n";
+
+        int tempGrid[HEIGHT][WIDTH];
+        memcpy(tempGrid, grid, sizeof(grid));
+
+        for (int i = 0; i < 4; i++) {
+            for (int j = 0; j < 4; j++) {
+                if (currentTetromino[i][j] && tetY + i < HEIGHT && tetX + j < WIDTH && tetX + j >= 0) {
+                    tempGrid[tetY + i][tetX + j] = currentTetrominoIndex;
+                }
+            }
+        }
+
+        for (int i = 0; i < HEIGHT; i++) {
+            cout << "|";
+            for (int j = 0; j < WIDTH; j++) {
+                cout << (tempGrid[i][j] >= 0 ? color[tempGrid[i][j]] : "⬜");
+            }
+            cout << "|";
+            
+            if (i < 6) {
+                cout << "  ";
+                if (i == 0) cout << "Next Piece:";
+                else if (i > 1) {
+                    for(int j = 0; j < 4; j++) {
+                        cout << (nextTetromino[i-2][j] ? color[nextTetrominoIndex] : "⬜");
+                    }
+                }
+            }
+            else if (i == 7) {
+                cout << "  ╔════════════════════╗";
+            }
+            else if (i == 8) {
+                cout << "  ║ Score: " << setw(11) << score << " ║";
+            }
+            else if (i == 9) {
+                cout << "  ╚════════════════════╝";
+            }
+            else if (i == 10) {
+                cout << "  ╔════════════════════╗"; 
+            }
+            else if (i == 11) {
+                cout << "  ║ High: " << setw(12) << highScore << " ║";
+            }
+            else if(i == 12){
+                cout << "  ╚════════════════════╝";
+            }
+            else if(i == 13){
+                cout << "  ╔════════════════════╗";
+            }
+            else if(i == 14){
+                cout << "  ║ Level: " << setw(11) << level << " ║";
+            }
+            else if(i == 15){
+                cout << "  ╚════════════════════╝";
+            }
+            else if(i == 16){
+                cout << "  ╔══════════════════════════════════════════════════╗";
+            }
+            else if(i == 17){
+                cout << "  ║ Controls: WASD Move, W Rotate, R Restart, Q Quit ║";
+            }
+            else if(i == 18){
+                cout << "  ╚══════════════════════════════════════════════════╝";
+            }
+            cout << "\n";
+        }
+    }
+
+    void mergeTetromino() {
+        for (int i = 0; i < 4; i++) {
+            for (int j = 0; j < 4; j++) {
+                if (currentTetromino[i][j] && tetY + i >= 0) {
+                    grid[tetY + i][tetX + j] = currentTetrominoIndex;
+                }
+            }
+        }
+    }
+
+    void animateLineClear(int y) {
+        gotoxy(0, y + 1);
+        
+        for(int i = 0; i < 3; i++) {
+            gotoxy(0, y + 1);
+            cout << "|";
+            for(int j = 0; j < WIDTH; j++) {
+                cout << "✨";
+            }
+            cout << "|";
+            sleepFor(100);
+            gotoxy(0, y + 1);
+            cout << "|";
+            for(int j = 0; j < WIDTH; j++) {
+                cout << "⬜";
+            }
+            cout << "|";
+            sleepFor(100);
+        }
+    }
+
+    void clearLines() {
+        int linesCleared = 0;
+        for (int y = HEIGHT - 1; y >= 0; y--) {
+            bool complete = true;
+            for (int x = 0; x < WIDTH; x++) {
+                if (grid[y][x] < 0) {
+                    complete = false;
+                    break;
+                }
+            }
+
+            if (complete) {
+                animateLineClear(y);
+                
+                for (int ny = y; ny > 0; ny--) {
+                    for (int x = 0; x < WIDTH; x++) {
+                        grid[ny][x] = grid[ny - 1][x];
+                    }
+                }
+                
+                for (int x = 0; x < WIDTH; x++) {
+                    grid[0][x] = -1;
+                }
+                
+                score += 100;
+                if (score % LEVEL_UP_SCORE == 0) {
+                    level++;
+                }
+                linesCleared++;
+                y++;
+
+                displayGrid();
+            }
+        }
+
+        if (linesCleared > 1) {
+            int bonus = (linesCleared - 1) * 50;
+            score += bonus;
+            if (score % LEVEL_UP_SCORE == 0) {
+                level++;
+            }
+            displayBonusText(bonus, WIDTH / 2 - 5, 0);
+        }
+    }
+
+    void displayRules() {
+        system("cls");
+        cout << "╔════════════════════════════════════════════════════════════════════════════════╗\n";
+        cout << "║                              TETRIS GAME RULES                                 ║\n";
+        cout << "╠════════════════════════════════════════════════════════════════════════════════╣\n";
+        cout << "║                                                                                ║\n";
+        cout << "║  CONTROLS:                                                                     ║\n";
+        cout << "║    A/← - Move piece left                                                       ║\n";
+        cout << "║    D/→ - Move piece right                                                      ║\n";
+        cout << "║    S/↓ - Soft drop (move piece down faster)                                    ║\n";
+        cout << "║    W/↑ - Rotate piece clockwise                                                ║\n";
+        cout << "║    Space - Hard drop (instantly drop piece)                                    ║\n";
+        cout << "║    R - Restart game                                                            ║\n";
+        cout << "║    Q - Quit game                                                               ║\n";
+        cout << "║    P - Pause game                                                              ║\n";
+        cout << "║                                                                                ║\n";
+        cout << "║  SCORING:                                                                      ║\n";
+        cout << "║    • 100 points for each line cleared                                          ║\n";
+        cout << "║    • Bonus points for multiple lines:                                          ║\n";
+        cout << "║      - 2 lines: +50 bonus                                                      ║\n";
+        cout << "║      - 3 lines: +100 bonus                                                     ║\n";
+        cout << "║      - 4 lines: +150 bonus                                                     ║\n";
+        cout << "║                                                                                ║\n";
+        cout << "║  LEVELS:                                                                       ║\n";
+        cout << "║    • Start at Level 1                                                          ║\n";
+        cout << "║    • Level up every 500 points                                                 ║\n";
+        cout << "║    • Pieces fall faster each level                                             ║\n";
+        cout << "║                                                                                ║\n";
+        cout << "║  TIPS:                                                                         ║\n";
+        cout << "║    • Keep the playing field flat                                               ║\n";
+        cout << "║    • Create spaces for I pieces                                                ║\n";
+        cout << "║    • Use hard drop for quick placement                                         ║\n";
+        cout << "║    • Plan ahead for rotations                                                  ║\n";
+        cout << "║    • Clear lines from bottom up                                                ║\n";
+        cout << "║                                                                                ║\n";
+        cout << "║  Press any key to start the game...                                            ║\n";
+        cout << "╚════════════════════════════════════════════════════════════════════════════════╝\n";
+        _getch();
+    }
+
+public:
+    Tetris() : score(0), level(1), tetX(WIDTH / 2 - 2), tetY(0), currentTetrominoIndex(0), nextTetrominoIndex(0) {
+        memset(grid, -1, sizeof(grid));
+        loadHighScore();
+    }
+
+    void run() {
+        displayRules();
+        clearScreen();
+        hideCursor();
+        srand(time(0));
+
+        getNextTetromino();
+
+        while (true) {
+            currentTetromino = nextTetromino;
+            currentTetrominoIndex = nextTetrominoIndex;
+            
+            getNextTetromino();
+            
+            tetX = WIDTH / 2 - 2;
+            tetY = 0;
+            if (!isValidPosition(currentTetromino, tetX, tetY)) {
+                cout << "Press 'p' to play again or 'q' to quit\n";
+                char ch;
+                while (true) {
+                    ch = getch();
+                    if (ch == 'P' || ch == 'p') {
+                        run();
+                    }
+                    else if (ch == 'q' || ch == 'Q') {
+                        saveHighScore();
+                        return;
+                    }
+                }
+            }
+
+            while (true) {
+                displayGrid();
+
+                if (kbhit()) {
+                    char key = getch();
+                    key = tolower(key);
+                    
+                    if (key == 'a' && isValidPosition(currentTetromino, tetX - 1, tetY))
+                        tetX--;
+                    else if (key == 'd' && isValidPosition(currentTetromino, tetX + 1, tetY))
+                        tetX++;
+                    else if (key == 's') {
+                        if (isValidPosition(currentTetromino, tetX, tetY + 1))
+                            tetY++;
+                        else {
+                            mergeTetromino();
+                            clearLines();
+                            saveHighScore();
+                            break;
+                        }
+                    }
+                    else if (key == 'w') {
+                        vector<vector<int>> rotated = rotateTetromino(currentTetromino);
+                        if (isValidPosition(rotated, tetX, tetY)) {
+                            currentTetromino = rotated;
+                        }
+                    }
+                    else if (key == ' ') {
+                        while (isValidPosition(currentTetromino, tetX, tetY + 1))
+                            tetY++;
+                        mergeTetromino();
+                        clearLines();
+                        saveHighScore();
+                        break;
+                    }
+                    else if (key == 'r') {
+                        run();
+                        return;
+                    }
+                    else if (key == 'q') {
+                        saveHighScore();
+                        exit(0);
+                    }
+                    else if (key == 'p') {
+                        while (true) {
+                            char ch = getch();
+                            sleepFor(100);
+                            if (ch == 'p') {
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                static auto lastFall = chrono::steady_clock::now();
+                auto now = chrono::steady_clock::now();
+                if (chrono::duration_cast<chrono::milliseconds>(now - lastFall).count() > getFallSpeed()) {
+                    if (isValidPosition(currentTetromino, tetX, tetY + 1)) {
+                        tetY++;
+                    }
+                    else {
+                        mergeTetromino();
+                        clearLines();
+                        saveHighScore();
+                        break;
+                    }
+                    lastFall = now;
+                }
+
+                sleepFor(10);
+            }
+        }
+    }
+};
+
+// Static member initialization
+const vector<string> Tetris::color = {
+    "🟦", "🟪", "🟨", "🟥", "🟩", "🟧", "🟫"
+};
+
+const vector<vector<vector<int>>> Tetris::tetrominoes = {
     {{0, 0, 0, 0}, {1, 1, 1, 1}, {0, 0, 0, 0}, {0, 0, 0, 0}}, // I
     {{0, 1, 0, 0}, {1, 1, 1, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, // T
     {{0, 0, 0, 0}, {0, 1, 1, 0}, {0, 1, 1, 0}, {0, 0, 0, 0}}, // O
@@ -160,436 +520,14 @@ vector<vector<vector<int>>> tetrominoes = {
     {{0, 0, 1, 0}, {1, 1, 1, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}  // J
 };
 
-vector<vector<int>> currentTetromino;
-int tetX = WIDTH / 2 - 2, tetY = 0;
-
-vector<vector<int>> nextTetromino;
-int nextTetrominoIndex = 0;
-
-// Add current piece color index
-int currentTetrominoIndex = 0;
-
-vector<vector<int>> rotateTetromino(const vector<vector<int>> &shape)
-{
-    vector<vector<int>> rotated(4, vector<int>(4, 0));
-    for (int i = 0; i < 4; i++)
-    {
-        for (int j = 0; j < 4; j++)
-        {
-            rotated[j][3 - i] = shape[i][j];
-        }
-    }
-    return rotated;
-}
-
-bool isValidPosition(const vector<vector<int>> &shape, int x, int y)
-{
-    for (int i = 0; i < 4; i++)
-    {
-        for (int j = 0; j < 4; j++)
-        {
-            if (shape[i][j])
-            {
-                int newX = x + j;
-                int newY = y + i;
-                if (newX < 0 || newX >= WIDTH || newY >= HEIGHT)
-                    return false;
-                if (newY >= 0 && grid[newY][newX] >= 0)
-                    return false;
-            }
-        }
-    }
-    return true;
-}
-
-void loadHighScore()
-{
-    ifstream file("highscore.txt");
-    if (file >> highScore)
-        file.close();
-}
-
-void saveHighScore()
-{
-    if (score > highScore)
-    {
-        ofstream file("highscore.txt");
-        file << score;
-        file.close();
-    }
-}
-
-int getFallSpeed()
-{
-    // Speed increases every level (max speed capped at 100ms)
-    return max(100, BASE_FALL_SPEED - (level * 50));
-}
-
-void displayBonusText(int bonus, int x, int y)
-{
-    gotoxy(x, y);
-    
-    // Animate the bonus text
-    for (int i = 0; i < 3; i++)
-    {
-        gotoxy(x, y);
-        cout << "🎉 BONUS +" << bonus << " 🎉";
-        sleepFor(200);
-        gotoxy(x, y);
-        cout << "   BONUS +" << bonus << "   ";
-        sleepFor(200);
-    }
-
-    // Clear the bonus text
-    gotoxy(x, y);
-    cout << "                    ";
-}
-
-void getNextTetromino() {
-    nextTetrominoIndex = rand() % tetrominoes.size();
-    nextTetromino = tetrominoes[nextTetrominoIndex];
-}
-
-void displayNextTetromino() {
-    int x = WIDTH * 2 + 5;
-    int y = 2;
-    gotoxy(x, y);
-    
-    cout << "Next Piece:";
-    y++;
-    gotoxy(x, y);
-    
-    // Display the next tetromino
-    for(int i = 0; i < 4; i++) {
-        cout << "  "; // Add some spacing
-        for(int j = 0; j < 4; j++) {
-            cout << (nextTetromino[i][j] ? color[nextTetrominoIndex] : "⬜");
-        }
-        cout << "\n";
-        y++;
-        gotoxy(x, y);
-    }
-}
-
-void displayGrid(int idx)
-{
-    gotoxy(0, 0);
-
-    // Remove the score display from top
-    cout << "\n";
-
-    int tempGrid[HEIGHT][WIDTH];
-    memcpy(tempGrid, grid, sizeof(grid));
-
-    for (int i = 0; i < 4; i++)
-    {
-        for (int j = 0; j < 4; j++)
-        {
-            if (currentTetromino[i][j] && tetY + i < HEIGHT && tetX + j < WIDTH && tetX + j >= 0)
-            {
-                tempGrid[tetY + i][tetX + j] = idx; // Use current piece's color for active piece
-            }
-        }
-    }
-
-    for (int i = 0; i < HEIGHT; i++)
-    {
-        cout << "|";
-        for (int j = 0; j < WIDTH; j++)
-        {
-            cout << (tempGrid[i][j] >= 0 ? color[tempGrid[i][j]] : "⬜");
-        }
-        cout << "|";
-        
-        // Display next tetromino and info boxes
-        if (i < 6) {
-            cout << "  ";
-            if (i == 0) cout << "Next Piece:";
-            else if (i > 1) {
-                for(int j = 0; j < 4; j++) {
-                    cout << (nextTetromino[i-2][j] ? color[nextTetrominoIndex] : "⬜");
-                }
-            }
-        }
-        else if (i == 7) {
-            cout << "  ╔════════════════════╗";
-        }
-        else if (i == 8) {
-            cout << "  ║ Score: " << setw(11) << score << " ║";
-        }
-        else if (i == 9) {
-            cout << "  ╚════════════════════╝";
-        }
-        else if (i == 10) {
-            cout << "  ╔════════════════════╗"; 
-        }
-        else if (i == 11) {
-            cout << "  ║ High: " << setw(12) << highScore << " ║";
-        }
-        else if(i == 12){
-            cout << "  ╚════════════════════╝";
-        }
-        else if(i == 13){
-            cout << "  ╔════════════════════╗";
-        }
-        else if(i == 14){
-            cout << "  ║ Level: " << setw(11) << level << " ║";
-        }
-        else if(i == 15){
-            cout << "  ╚════════════════════╝";
-        }
-        else if(i == 16){
-            cout << "  ╔══════════════════════════════════════════════════╗";
-        }
-        else if(i == 17){
-            cout << "  ║ Controls: WASD Move, W Rotate, R Restart, Q Quit ║";
-        }
-        else if(i == 18){
-            cout << "  ╚══════════════════════════════════════════════════╝";
-        }
-        cout << "\n";
-    }
-}
-
-void mergeTetromino()
-{
-    for (int i = 0; i < 4; i++)
-    {
-        for (int j = 0; j < 4; j++)
-        {
-            if (currentTetromino[i][j] && tetY + i >= 0)
-            {
-                grid[tetY + i][tetX + j] = currentTetrominoIndex; // Use the stored color index
-            }
-        }
-    }
-}
-
-void animateLineClear(int y) {
-    gotoxy(0, y + 1); // +1 because first line is score display
-    
-    // Flash effect for the cleared line
-    for(int i = 0; i < 3; i++) {
-        gotoxy(0, y + 1);
-        // Show sparkle effect
-        cout << "|";
-        for(int j = 0; j < WIDTH; j++) {
-            cout << "✨";  // Sparkle effect
-        }
-        cout << "|";
-        sleepFor(100);
-        gotoxy(0, y + 1);
-        cout << "|";
-        for(int j = 0; j < WIDTH; j++) {
-            cout << "⬜";  // Empty state
-        }
-        cout << "|";
-        sleepFor(100);
-    }
-}
-
-void clearLines()
-{
-    int linesCleared = 0;
-    for (int y = HEIGHT - 1; y >= 0; y--)
-    {
-        bool complete = true;
-        for (int x = 0; x < WIDTH; x++)
-        {
-            if (grid[y][x] < 0)
-            {
-                complete = false;
-                break;
-            }
-        }
-
-        if (complete)
-        {
-            // Animate the line clear before removing it
-            animateLineClear(y);
-            
-            // Shift all lines above down
-            for (int ny = y; ny > 0; ny--)
-            {
-                for (int x = 0; x < WIDTH; x++)
-                {
-                    grid[ny][x] = grid[ny - 1][x];
-                }
-            }
-            
-            // Clear the top line
-            for (int x = 0; x < WIDTH; x++)
-            {
-                grid[0][x] = -1;
-            }
-            
-            score += 100;
-            if (score % 500 == 0)
-            {
-                level++;
-            }
-            linesCleared++;
-            y++;
-
-            // Redraw the grid immediately after each line clear
-            displayGrid(currentTetrominoIndex);
-        }
-    }
-
-    // Display bonus animation for multiple lines
-    if (linesCleared > 1)
-    {
-        int bonus = (linesCleared - 1) * 50;
-        score += bonus;
-        if (score % 500 == 0)
-        {
-            level++;
-        }
-        displayBonusText(bonus, WIDTH / 2 - 5, 0); // Display at top center of game area
-    }
-}
-
-void gameLoop()
-{
-    displayRules();
-    clearScreen(); // Clear screen before starting
-    loadHighScore();
-    hideCursor();
-    score = 0;
-    level = 1;
-    memset(grid, -1, sizeof(grid)); // Initialize with -1 to indicate empty cells
-    srand(time(0));
-
-    // Initialize first next tetromino
-    getNextTetromino();
-
-    while (true)
-    {
-        // Use the next tetromino as current
-        currentTetromino = nextTetromino;
-        currentTetrominoIndex = nextTetrominoIndex; // Store the color index for this piece
-        
-        // Get new next tetromino
-        getNextTetromino();
-        
-        tetX = WIDTH / 2 - 2;
-        tetY = 0;
-        if (!isValidPosition(currentTetromino, tetX, tetY))
-        {
-            cout << "Press 'p' to play again or 'q' to quit\n";
-            char ch;
-            while (true)
-            {
-                ch = getch();
-                if (ch == 'P' || ch == 'p')
-                {
-                    gameLoop();
-                }
-                else if (ch == 'q' || ch == 'Q')
-                {
-                    saveHighScore();
-                    return;
-                }
-            }
-        }
-
-        while (true)
-        {
-            displayGrid(currentTetrominoIndex); // Use the stored color index
-
-            if (kbhit())
-            {
-                char key = getch();
-                key = tolower(key);
-                
-                if (key == 'a' && isValidPosition(currentTetromino, tetX - 1, tetY))
-                    tetX--;
-                else if (key == 'd' && isValidPosition(currentTetromino, tetX + 1, tetY))
-                    tetX++;
-                else if (key == 's')
-                {
-                    if (isValidPosition(currentTetromino, tetX, tetY + 1))
-                        tetY++;
-                    else
-                    {
-                        mergeTetromino();
-                        clearLines();
-                        saveHighScore();
-                        break;
-                    }
-                }
-                else if (key == 'w')
-                {
-                    vector<vector<int>> rotated = rotateTetromino(currentTetromino);
-                    if (isValidPosition(rotated, tetX, tetY))
-                    {
-                        currentTetromino = rotated;
-                    }
-                }
-                else if (key == ' ')
-                {
-                    while (isValidPosition(currentTetromino, tetX, tetY + 1))
-                        tetY++;
-                    mergeTetromino();
-                    clearLines();
-                    saveHighScore();
-                    break;
-                }
-                else if (key == 'r')
-                {
-                    gameLoop();
-                    return;
-                }
-                else if (key == 'q')
-                {
-                    saveHighScore();
-                    exit(0);
-                }
-                else if (key == 'p') //pause game
-                {
-                    while (true)
-                    {
-                        char ch = getch();
-                        sleepFor(100);
-                        if (ch == 'p')
-                        {
-                            break;
-                        }
-                    }
-                }
-            }
-            // Automatic falling
-            static auto lastFall = chrono::steady_clock::now();
-            auto now = chrono::steady_clock::now();
-            if (chrono::duration_cast<chrono::milliseconds>(now - lastFall).count() > getFallSpeed())
-            {
-                if (isValidPosition(currentTetromino, tetX, tetY + 1))
-                {
-                    tetY++;
-                }
-                else
-                {
-                    mergeTetromino();
-                    clearLines();
-                    saveHighScore();
-                    break;
-                }
-                lastFall = now;
-            }
-
-            sleepFor(10);
-        }
-    }
-}
-
-int main()
-{
+int main() {
     #ifdef _WIN32
         SetConsoleOutputCP(CP_UTF8);
     #else
         setlocale(LC_ALL, "");
     #endif
     srand(time(0));
-    gameLoop();
+    Tetris game;
+    game.run();
     return 0;
 }
