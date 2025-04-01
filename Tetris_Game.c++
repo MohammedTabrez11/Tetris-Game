@@ -186,26 +186,6 @@ private:
         nextTetromino = tetrominoes[nextTetrominoIndex];
     }
 
-    void displayNextTetromino() {
-        int x = WIDTH * 2 + 5;
-        int y = 2;
-        gotoxy(x, y);
-        
-        cout << "Next Piece:";
-        y++;
-        gotoxy(x, y);
-        
-        for(int i = 0; i < 4; i++) {
-            cout << "  ";
-            for(int j = 0; j < 4; j++) {
-                cout << (nextTetromino[i][j] ? color[nextTetrominoIndex] : "⬜");
-            }
-            cout << "\n";
-            y++;
-            gotoxy(x, y);
-        }
-    }
-
     void displayGrid() {
         gotoxy(0, 0);
         cout << "\n";
