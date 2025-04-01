@@ -3,7 +3,7 @@
 A classic Tetris implementation written in C++ that works on both Windows and Unix-based systems.
 
 ![Gameplay Screenshot](./assets/gameplay.png)
-![Rulebook Preview](./assets/rulebook.png)
+![Rulebook Preview](Screenshot 2025-04-01 193847.png)
 
 ## Features
 
